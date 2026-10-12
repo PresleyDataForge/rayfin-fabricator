@@ -1730,7 +1730,7 @@ export default function ChatPanel({
               )}
             </div>
           )}
-          {modeBadgeLabel(activeMode) && (
+          {!input.trimStart().startsWith('/') && modeBadgeLabel(activeMode) && (
             <div className="composer-mode-badge">
               <span>Mode: {modeBadgeLabel(activeMode)}</span>
               <button

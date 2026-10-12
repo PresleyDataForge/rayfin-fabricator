@@ -1511,5 +1511,36 @@ describe('ChatPanel Advisor fixes', () => {
       fireEvent.click(exitBtn)
       expect(screen.queryByText('Mode: Plan')).toBeNull()
     })
+
+    it('hides active mode badge while typing a slash command to prevent conflicting info', async () => {
+      const api = installApi()
+      render(<Harness />)
+      const input = screen.getByPlaceholderText(PLACEHOLDER)
+
+      // Enter Autopilot mode
+      fireEvent.change(input, { target: { value: '/autopilot' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect(screen.getByText('Mode: Autopilot')).toBeTruthy()
+
+      // Start typing /plan (as seen in the user screenshot)
+      fireEvent.change(input, { target: { value: '/plan' } })
+      // Badge should be hidden while typing /plan so there is no conflicting info
+      expect(screen.queryByText('Mode: Autopilot')).toBeNull()
+      expect(screen.queryByText(/Mode:/)).toBeNull()
+
+      // Erasing input restores the active Autopilot mode badge
+      fireEvent.change(input, { target: { value: '' } })
+      expect(screen.getByText('Mode: Autopilot')).toBeTruthy()
+
+      // Typing /plan with prompt and submitting switches to Plan mode immediately
+      fireEvent.change(input, { target: { value: '/plan create an api' } })
+      expect(screen.queryByText('Mode: Autopilot')).toBeNull()
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      // Submitted: Mode is now Plan!
+      expect(screen.getByText('Mode: Plan')).toBeTruthy()
+      await waitFor(() => expect(api.chat.send).toHaveBeenCalledOnce())
+    })
   })
 })
