@@ -742,8 +742,8 @@ export default function ChatPanel({
     let effectiveText = text
     let effectivePrompt = text
     if (parsedSlash) {
+      setActiveMode(parsedSlash.command.mode)
       if (parsedSlash.isBare) {
-        setActiveMode(parsedSlash.command.mode)
         setInput('')
         return
       }

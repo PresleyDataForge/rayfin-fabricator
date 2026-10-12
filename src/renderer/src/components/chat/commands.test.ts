@@ -30,7 +30,7 @@ describe('slash commands', () => {
     })
 
     it('filters commands by description substring', () => {
-      const results = rankCommands('draft an implementation')
+      const results = rankCommands('implementation plan before coding')
       expect(results).toHaveLength(1)
       expect(results[0].name).toBe('plan')
     })

@@ -11,13 +11,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: 'plan',
     label: '/plan',
-    description: 'Research and draft an implementation plan for review before making changes',
+    description: 'create an implementation plan before coding',
     mode: 'plan'
   },
   {
     name: 'autopilot',
     label: '/autopilot',
-    description: 'Run autonomously end-to-end to complete the task',
+    description: 'switch to autopilot mode with an objective',
     mode: 'autopilot'
   },
   {

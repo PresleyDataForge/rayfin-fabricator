@@ -1413,12 +1413,15 @@ describe('ChatPanel Advisor fixes', () => {
       expect((input as HTMLTextAreaElement).value).toBe('/autopilot ')
     })
 
-    it('dispatches with plan mode on one-shot /plan <prompt>', async () => {
+    it('dispatches with plan mode on /plan <prompt> and updates mode indicator immediately', async () => {
       const api = installApi()
       render(<Harness />)
       const input = screen.getByPlaceholderText(PLACEHOLDER)
       fireEvent.change(input, { target: { value: '/plan build dark mode' } })
       fireEvent.keyDown(input, { key: 'Enter' })
+
+      // Mode indicator immediately shows Plan
+      expect(screen.getByText('Mode: Plan')).toBeTruthy()
 
       await waitFor(() => expect(api.chat.send).toHaveBeenCalledOnce())
       expect(api.chat.send).toHaveBeenCalledWith(
@@ -1427,6 +1430,47 @@ describe('ChatPanel Advisor fixes', () => {
         'build dark mode',
         [],
         'plan'
+      )
+
+      // Typing /agent clears the indicator immediately
+      fireEvent.change(input, { target: { value: '/agent' } })
+      // Auto-complete select then submit
+      fireEvent.keyDown(input, { key: 'Enter' })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect(screen.queryByText('Mode: Plan')).toBeNull()
+      expect(screen.queryByText(/Mode:/)).toBeNull()
+    })
+
+    it('updates mode indicator immediately on /autopilot <prompt> and clears on /agent <prompt>', async () => {
+      const api = installApi()
+      render(<Harness />)
+      const input = screen.getByPlaceholderText(PLACEHOLDER)
+      fireEvent.change(input, { target: { value: '/autopilot implement user login' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      // Mode indicator immediately shows Autopilot
+      expect(screen.getByText('Mode: Autopilot')).toBeTruthy()
+
+      await waitFor(() => expect(api.chat.send).toHaveBeenCalledOnce())
+      expect(api.chat.send).toHaveBeenCalledWith(
+        'p1',
+        expect.any(String),
+        'implement user login',
+        [],
+        'autopilot'
+      )
+
+      // Entering /agent with prompt clears the indicator and sends with agent mode
+      fireEvent.change(input, { target: { value: '/agent back to normal' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect(screen.queryByText(/Mode:/)).toBeNull()
+      await waitFor(() => expect(api.chat.send).toHaveBeenCalledTimes(2))
+      expect(api.chat.send).toHaveBeenLastCalledWith(
+        'p1',
+        expect.any(String),
+        'back to normal',
+        [],
+        'agent'
       )
     })
 
