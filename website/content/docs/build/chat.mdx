@@ -1,5 +1,5 @@
 ---
-title: "Chat with Copilot"
+title: 'Chat with Copilot'
 description: "Use Fabricator's built-in GitHub Copilot agent to change your app, review its work log and diffs, steer a turn, and recover sign-in."
 ---
 
@@ -81,6 +81,22 @@ Plans can appear when Copilot proposes one. A plan card can show structured step
 
 Use **Review full plan** to open the full plan. You can **Request changes**, edit the plan when editing is available, or approve one of the offered actions. **Autopilot** means Copilot continues through the approved plan more autonomously.
 
+## Slash commands and agent modes
+
+You can explicitly invoke planning or autonomous execution directly from the chat composer using slash commands without having to prompt Copilot in natural language:
+
+- `/plan <prompt>`: Dispatches your message in **Plan** mode. Copilot will research and generate an implementation plan with steps and questions for you to review before making changes.
+- `/autopilot <prompt>`: Dispatches your message in **Autopilot** mode, directing Copilot to complete the task autonomously end-to-end.
+- `/agent <prompt>`: Dispatches your message in the default interactive agent mode.
+
+### Toggling composer mode
+
+Typing a bare `/plan` or `/autopilot` without a prompt sets the composer's active mode for subsequent messages:
+
+- An active mode badge (such as `Mode: Plan`) appears in the composer.
+- Select the `×` button on the badge or run `/agent` to return to interactive mode.
+- Typing `/` in the composer brings up an autocomplete menu allowing you to quickly select a slash command using keyboard navigation (<kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>Enter</kbd> or <kbd>Tab</kbd>).
+
 ## Design and Advisor cards in chat
 
 Design changes queued from the preview appear as a Design card instead of raw instructions. See [Design mode](/docs/build/design).
@@ -96,4 +112,3 @@ For team apps, Fabricator saves the change to the working branch and the team pi
 ## If Copilot asks you to sign in again
 
 If credentials expire, chat shows **Copilot needs your attention** and **Sign in to Copilot**. Complete the browser or device-code sign-in, then retry your message. For recovery steps, see [Copilot asks you to sign in again](/docs/troubleshooting/setup-and-sign-in#copilot-asks-you-to-sign-in-again).
-

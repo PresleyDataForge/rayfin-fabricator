@@ -1392,4 +1392,80 @@ describe('ChatPanel Advisor fixes', () => {
     await waitFor(() => expect(api.chat.send).toHaveBeenCalledTimes(2))
     expect((api.chat.send.mock.calls[1] as unknown[])[2]).toBe(upgrade)
   })
+
+  describe('slash commands', () => {
+    it('opens slash command menu when typing / and allows navigation', async () => {
+      installApi()
+      render(<Harness />)
+      const input = screen.getByPlaceholderText(PLACEHOLDER)
+      fireEvent.change(input, { target: { value: '/' } })
+
+      const menu = screen.getByRole('listbox', { name: 'Slash commands' })
+      expect(menu).toBeTruthy()
+      expect(within(menu).getByText('/plan')).toBeTruthy()
+      expect(within(menu).getByText('/autopilot')).toBeTruthy()
+      expect(within(menu).getByText('/agent')).toBeTruthy()
+
+      // Keyboard navigation selects item
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect(screen.queryByRole('listbox', { name: 'Slash commands' })).toBeNull()
+      expect((input as HTMLTextAreaElement).value).toBe('/autopilot ')
+    })
+
+    it('dispatches with plan mode on one-shot /plan <prompt>', async () => {
+      const api = installApi()
+      render(<Harness />)
+      const input = screen.getByPlaceholderText(PLACEHOLDER)
+      fireEvent.change(input, { target: { value: '/plan build dark mode' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      await waitFor(() => expect(api.chat.send).toHaveBeenCalledOnce())
+      expect(api.chat.send).toHaveBeenCalledWith(
+        'p1',
+        expect.any(String),
+        'build dark mode',
+        [],
+        'plan'
+      )
+    })
+
+    it('toggles mode and updates placeholder on bare /plan', async () => {
+      const api = installApi()
+      render(<Harness />)
+      const input = screen.getByPlaceholderText(PLACEHOLDER)
+      fireEvent.change(input, { target: { value: '/plan' } })
+      // First Enter selects from autocomplete menu, inserting '/plan '
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect((input as HTMLTextAreaElement).value).toBe('/plan ')
+      // Second Enter submits the bare command
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      // Should NOT send to backend immediately
+      expect(api.chat.send).not.toHaveBeenCalled()
+      // Input is cleared
+      expect((input as HTMLTextAreaElement).value).toBe('')
+      // Badge is visible
+      expect(screen.getByText('Mode: Plan')).toBeTruthy()
+      // Placeholder updated
+      expect(screen.getByPlaceholderText(/Plan mode/)).toBeTruthy()
+
+      // Sending regular text now sends with 'plan' mode
+      fireEvent.change(input, { target: { value: 'implement authentication' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      await waitFor(() => expect(api.chat.send).toHaveBeenCalledOnce())
+      expect(api.chat.send).toHaveBeenCalledWith(
+        'p1',
+        expect.any(String),
+        'implement authentication',
+        [],
+        'plan'
+      )
+
+      // Clicking x exits plan mode
+      const exitBtn = screen.getByRole('button', { name: 'Exit mode' })
+      fireEvent.click(exitBtn)
+      expect(screen.queryByText('Mode: Plan')).toBeNull()
+    })
+  })
 })

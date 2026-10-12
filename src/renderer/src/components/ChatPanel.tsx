@@ -42,6 +42,13 @@ import { readAsDataUrl, toPngAndThumb } from './chat/images'
 import { reduceChatMessage, rollbackInterjection, settleRunningTools } from './chat/reducer'
 import { ChatEventBuffer, isStreamingEvent } from './chat/eventCoalescer'
 import { flattenFiles, rankFiles, type MentionFile } from './chat/mentions'
+import {
+  modeBadgeLabel,
+  modePlaceholder,
+  parseSlashCommand,
+  rankCommands,
+  type SlashCommand
+} from './chat/commands'
 import { createFileResolver } from './chat/paths'
 import { MessageRow } from './chat/MessageRow'
 import { tryAgainPrompt } from './chat/prompts'
@@ -315,6 +322,11 @@ export default function ChatPanel({
   const [atQuery, setAtQuery] = useState('')
   const [atIdx, setAtIdx] = useState(0)
   const [atDismissed, setAtDismissed] = useState(false)
+  const [slashOpen, setSlashOpen] = useState(false)
+  const [slashQuery, setSlashQuery] = useState('')
+  const [slashIdx, setSlashIdx] = useState(0)
+  const [slashDismissed, setSlashDismissed] = useState(false)
+  const [activeMode, setActiveMode] = useState<ChatMode>('agent')
   const pendingCaret = useRef<number | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const highlightRef = useRef<HTMLDivElement>(null)
@@ -723,11 +735,28 @@ export default function ChatPanel({
       await sendDesign(text, shots)
       return
     }
-    if (!text && shots.length === 0) return
-    const prompt = text || 'Here is a screenshot of the current preview — please take a look.'
+
+    // Slash commands: /plan, /autopilot, /agent
+    const parsedSlash = parseSlashCommand(text)
+    let modeOverride: ChatMode | undefined
+    let effectiveText = text
+    let effectivePrompt = text
+    if (parsedSlash) {
+      if (parsedSlash.isBare) {
+        setActiveMode(parsedSlash.command.mode)
+        setInput('')
+        return
+      }
+      modeOverride = parsedSlash.command.mode
+      effectiveText = parsedSlash.prompt
+      effectivePrompt = parsedSlash.prompt
+    }
+
+    if (!effectiveText && shots.length === 0) return
+    const prompt = effectivePrompt || 'Here is a screenshot of the current preview — please take a look.'
     setInput('')
     onAttachmentsConsumed?.()
-    await dispatch(text || '(screenshot)', prompt, shots)
+    await dispatch(effectiveText || '(screenshot)', prompt, shots, modeOverride)
   }
 
   /**
@@ -842,7 +871,7 @@ export default function ChatPanel({
   ): Promise<void> {
     const turnId = uid()
     const assistantId = uid()
-    const sendMode = modeOverride ?? 'agent'
+    const sendMode = modeOverride ?? activeMode ?? 'agent'
     const now = Date.now()
     const userMsg: UIChatMessage = {
       id: uid(),
@@ -1267,6 +1296,7 @@ export default function ChatPanel({
       setAtOpen(false)
       return
     }
+    setSlashOpen(false)
     setAtStart(caret - m[2].length - 1)
     setAtQuery(m[2])
     setAtIdx(0)
@@ -1274,16 +1304,37 @@ export default function ChatPanel({
     void ensureFiles()
   }
 
+  /** Recompute the active slash command from the caret; opens/closes the menu. */
+  function evalSlash(): void {
+    const ta = taRef.current
+    if (!ta || sending) {
+      setSlashOpen(false)
+      return
+    }
+    const caret = ta.selectionStart ?? ta.value.length
+    const m = /^\/([a-zA-Z0-9_-]*)$/.exec(ta.value.slice(0, caret))
+    if (!m) {
+      setSlashOpen(false)
+      return
+    }
+    setAtOpen(false)
+    setSlashQuery(m[1])
+    setSlashIdx(0)
+    setSlashOpen(true)
+  }
+
   function onComposerChange(e: ChangeEvent<HTMLTextAreaElement>): void {
     setInput(e.target.value)
     setAtDismissed(false)
+    setSlashDismissed(false)
     evalAt()
+    evalSlash()
   }
 
   function onComposerSelect(): void {
     revealCaretSoon()
-    if (atDismissed) return
-    evalAt()
+    if (!atDismissed) evalAt()
+    if (!slashDismissed) evalSlash()
   }
 
   const atMatches = useMemo(() => {
@@ -1293,6 +1344,13 @@ export default function ChatPanel({
   const atLoading = atOpen && fileList == null
   const atCapture = atOpen && atMatches.length > 0
   const atSel = Math.max(0, Math.min(atIdx, atMatches.length - 1))
+
+  const slashMatches = useMemo(() => {
+    if (!slashOpen) return []
+    return rankCommands(slashQuery)
+  }, [slashOpen, slashQuery])
+  const slashCapture = slashOpen && slashMatches.length > 0
+  const slashSel = Math.max(0, Math.min(slashIdx, slashMatches.length - 1))
 
   /** Replace the active @-token with a reference to `path`. */
   function pickFile(path: string): void {
@@ -1304,6 +1362,16 @@ export default function ChatPanel({
     setAtOpen(false)
     setAtDismissed(false)
     pendingCaret.current = before.length + insert.length
+  }
+
+  function pickCommand(cmd: SlashCommand): void {
+    const caret = taRef.current?.selectionStart ?? input.length
+    const after = input.slice(caret)
+    const insert = `/${cmd.name} `
+    setInput(insert + after)
+    setSlashOpen(false)
+    setSlashDismissed(false)
+    pendingCaret.current = insert.length
   }
 
   // Restore focus + caret after an @-mention insertion (input is controlled).
@@ -1319,6 +1387,30 @@ export default function ChatPanel({
   }, [input])
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (slashCapture) {
+      const len = slashMatches.length
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashIdx((i) => (Math.max(0, Math.min(i, len - 1)) + 1) % len)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashIdx((i) => (Math.max(0, Math.min(i, len - 1)) - 1 + len) % len)
+        return
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault()
+        pickCommand(slashMatches[slashSel])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSlashDismissed(true)
+        setSlashOpen(false)
+        return
+      }
+    }
     if (atCapture) {
       const len = atMatches.length
       if (e.key === 'ArrowDown') {
@@ -1586,6 +1678,27 @@ export default function ChatPanel({
               ))}
             </div>
           )}
+          {slashOpen && slashMatches.length > 0 && (
+            <div className="slash-menu" role="listbox" aria-label="Slash commands">
+              {slashMatches.map((cmd, i) => (
+                <button
+                  key={cmd.name}
+                  type="button"
+                  role="option"
+                  aria-selected={i === slashSel}
+                  className={`slash-item${i === slashSel ? ' is-selected' : ''}`}
+                  onMouseEnter={() => setSlashIdx(i)}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    pickCommand(cmd)
+                  }}
+                >
+                  <span className="slash-item-name">{cmd.label}</span>
+                  <span className="slash-item-desc">{cmd.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <DesignTray
             items={designItems}
             sending={designSending}
@@ -1617,6 +1730,20 @@ export default function ChatPanel({
               )}
             </div>
           )}
+          {modeBadgeLabel(activeMode) && (
+            <div className="composer-mode-badge">
+              <span>Mode: {modeBadgeLabel(activeMode)}</span>
+              <button
+                type="button"
+                className="composer-mode-badge-x"
+                onClick={() => setActiveMode('agent')}
+                title="Switch back to interactive Agent mode"
+                aria-label="Exit mode"
+              >
+                ×
+              </button>
+            </div>
+          )}
           <div className="composer-input-sizer" ref={sizerRef} data-replicated-value={input}>
             <div className="composer-highlight" ref={highlightRef} aria-hidden="true">
               {splitMentions(input, knownFiles).map((p, i) =>
@@ -1638,7 +1765,7 @@ export default function ChatPanel({
                   ? 'Deploy your app to start chatting…'
                   : designItems.length > 0
                     ? 'Add a note for these changes (optional) — or just press Enter to send them'
-                    : `Message Fabricator about ${project.name}…`
+                    : modePlaceholder(activeMode, `Message Fabricator about ${project.name}…`)
               }
               value={input}
               rows={1}
