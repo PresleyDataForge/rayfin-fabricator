@@ -730,6 +730,7 @@ export default function ChatPanel({
     // allowed) so the turn never overlaps the deploy and the local preview can
     // start cleanly once the deploy finishes.
     if (submitBlocked) return
+    setSlashOpen(false)
     // Queued Design changes go out as one turn; the typed text is their note.
     if (designItems.length > 0 && buildDesignTurn) {
       await sendDesign(text, shots)
@@ -738,25 +739,26 @@ export default function ChatPanel({
 
     // Slash commands: /plan, /autopilot, /agent
     const parsedSlash = parseSlashCommand(text)
-    let modeOverride: ChatMode | undefined
-    let effectiveText = text
-    let effectivePrompt = text
     if (parsedSlash) {
       setActiveMode(parsedSlash.command.mode)
       if (parsedSlash.isBare) {
         setInput('')
         return
       }
-      modeOverride = parsedSlash.command.mode
-      effectiveText = parsedSlash.prompt
-      effectivePrompt = parsedSlash.prompt
     }
 
+    const effectiveText = parsedSlash?.prompt ?? text
     if (!effectiveText && shots.length === 0) return
-    const prompt = effectivePrompt || 'Here is a screenshot of the current preview — please take a look.'
+    const prompt =
+      effectiveText || 'Here is a screenshot of the current preview — please take a look.'
     setInput('')
     onAttachmentsConsumed?.()
-    await dispatch(effectiveText || '(screenshot)', prompt, shots, modeOverride)
+    await dispatch(
+      effectiveText || '(screenshot)',
+      prompt,
+      shots,
+      parsedSlash?.command.mode ?? activeMode
+    )
   }
 
   /**
@@ -871,7 +873,7 @@ export default function ChatPanel({
   ): Promise<void> {
     const turnId = uid()
     const assistantId = uid()
-    const sendMode = modeOverride ?? activeMode ?? 'agent'
+    const sendMode = modeOverride ?? 'agent'
     const now = Date.now()
     const userMsg: UIChatMessage = {
       id: uid(),
@@ -1312,7 +1314,7 @@ export default function ChatPanel({
       return
     }
     const caret = ta.selectionStart ?? ta.value.length
-    const m = /^\/([a-zA-Z0-9_-]*)$/.exec(ta.value.slice(0, caret))
+    const m = /^\s*\/([a-zA-Z0-9_-]*)$/.exec(ta.value.slice(0, caret))
     if (!m) {
       setSlashOpen(false)
       return
@@ -1365,8 +1367,7 @@ export default function ChatPanel({
   }
 
   function pickCommand(cmd: SlashCommand): void {
-    const caret = taRef.current?.selectionStart ?? input.length
-    const after = input.slice(caret)
+    const after = input.replace(/^\s*\/[a-zA-Z0-9_-]*[ \t]*/, '')
     const insert = `/${cmd.name} `
     setInput(insert + after)
     setSlashOpen(false)
@@ -1374,7 +1375,7 @@ export default function ChatPanel({
     pendingCaret.current = insert.length
   }
 
-  // Restore focus + caret after an @-mention insertion (input is controlled).
+  // Selecting an unchanged command still needs to move the caret past its token.
   useEffect(() => {
     const c = pendingCaret.current
     if (c == null) return
@@ -1384,7 +1385,7 @@ export default function ChatPanel({
       ta.focus()
       ta.setSelectionRange(c, c)
     }
-  }, [input])
+  }, [input, slashOpen])
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (slashCapture) {
@@ -1690,8 +1691,8 @@ export default function ChatPanel({
                   onMouseEnter={() => setSlashIdx(i)}
                   onMouseDown={(e) => {
                     e.preventDefault()
-                    pickCommand(cmd)
                   }}
+                  onClick={() => pickCommand(cmd)}
                 >
                   <span className="slash-item-name">{cmd.label}</span>
                   <span className="slash-item-desc">{cmd.description}</span>

@@ -83,19 +83,23 @@ Use **Review full plan** to open the full plan. You can **Request changes**, edi
 
 ## Slash commands and agent modes
 
-You can explicitly invoke planning or autonomous execution directly from the chat composer using slash commands without having to prompt Copilot in natural language:
+Start an idle chat message with a slash command to choose how Copilot handles it:
 
-- `/plan <prompt>`: Dispatches your message in **Plan** mode. Copilot will research and generate an implementation plan with steps and questions for you to review before making changes.
-- `/autopilot <prompt>`: Dispatches your message in **Autopilot** mode, directing Copilot to complete the task autonomously end-to-end.
-- `/agent <prompt>`: Dispatches your message in the default interactive agent mode.
+- `/plan <prompt>` sends your message in **Plan** mode to create an implementation plan before coding.
+- `/autopilot <prompt>` sends your message in **Autopilot** mode with an objective.
+- `/agent <prompt>` sends your message in the default interactive agent mode.
 
-### Toggling composer mode
+Submitting any of these commands also selects that mode for later messages you type in the composer. To choose a mode without sending a message, submit `/plan`, `/autopilot`, or `/agent` without a prompt.
 
-Typing a bare `/plan` or `/autopilot` without a prompt sets the composer's active mode for subsequent messages:
+### Select a command and check the mode
 
-- An active mode badge (such as `Mode: Plan`) appears in the composer.
-- Select the `×` button on the badge or run `/agent` to return to interactive mode.
-- Typing `/` in the composer brings up an autocomplete menu allowing you to quickly select a slash command using keyboard navigation (<kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>Enter</kbd> or <kbd>Tab</kbd>).
+1. Type `/` at the start of the message box to open **Slash commands**.
+2. Use **Arrow Up** or **Arrow Down** to highlight a command, then press **Enter** or **Tab** to insert it. You can also select it with the mouse. **Escape** closes the menu without changing your draft.
+3. Add your prompt, then press **Enter** or select **Send**. For a bare command, press **Enter** again after inserting it.
+
+The badge above the message box shows **Mode: Plan** or **Mode: Autopilot** after submission. Interactive agent mode has no badge. While your draft starts with `/`, the badge is hidden so it does not conflict with the command you are typing. Clearing the draft restores the current mode badge.
+
+Select **×** on the badge or submit `/agent` to return to interactive mode. The composer mode applies to new typed messages; Design changes and automatic Advisor or Rayfin upgrade hand-offs keep their existing behavior. Messages sent while Copilot is working steer the current turn instead of starting a new mode.
 
 ## Design and Advisor cards in chat
 
