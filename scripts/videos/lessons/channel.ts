@@ -48,6 +48,8 @@ export const CHANNEL: Channel = {
     2: '-PzsntUZT7w',
     3: 'cYkA6CkVJLA',
     4: 'H3jneRn7Mlk',
+    5: 'RcK4Tx_f63w',
+    6: 'G4HfluMI9iY',
   },
   aiUse: 'no',
 };

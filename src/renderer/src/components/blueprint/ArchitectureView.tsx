@@ -7,7 +7,8 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent
+  type PointerEvent as ReactPointerEvent,
+  type JSX,
 } from 'react'
 import type { StudioProject } from '@shared/ipc'
 import {
@@ -39,8 +40,8 @@ interface Props {
   onSendToChat: (display: string, prompt: string, stage?: boolean) => void
   /** Show an entity in the Data model view. */
   onOpenEntity: (entity: string) => void
-  /** Show a semantic model (`workspaceId:itemId`) in the Semantic model view. */
-  onOpenSemanticModel: (key: string) => void
+  /** Show a semantic model (`workspaceId:itemId`) or a SQL source's tables in the Fabric data view. */
+  onOpenFabricData: (key: string) => void
   /** Open Code → Secrets. */
   onOpenSecrets?: () => void
 }
@@ -159,7 +160,7 @@ export default function ArchitectureView({
   onOpenFile,
   onSendToChat,
   onOpenEntity,
-  onOpenSemanticModel,
+  onOpenFabricData,
   onOpenSecrets
 }: Props): JSX.Element {
   const [selected, setSelected] = useState<string | null>(null)
@@ -544,7 +545,9 @@ export default function ArchitectureView({
 
   const appWho = appIdentityName(appIdentity, Boolean(project.lastDeploy?.url))
   let stagger = 0
-  const enter = (): CSSProperties => ({ '--i': stagger++ }) as CSSProperties
+  const enter = (): CSSProperties => (({
+    '--i': stagger++
+  }) as CSSProperties)
 
   return (
     <div className="bp-arch">
@@ -793,7 +796,7 @@ export default function ArchitectureView({
             onOpenFile={onOpenFile}
             onPrompt={sendPrompt}
             onOpenEntity={onOpenEntity}
-            onOpenSemanticModel={onOpenSemanticModel}
+            onOpenFabricData={onOpenFabricData}
             onOpenSecrets={onOpenSecrets}
           />
         )}

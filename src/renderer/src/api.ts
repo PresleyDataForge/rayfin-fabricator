@@ -13,6 +13,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { serializePreviewMutations } from './previewSurface'
 import {
   IpcChannels,
+  type AdvisorModelChoice,
   type AppSettings,
   type AuthProvider,
   type AdvisorEventEnvelope,
@@ -27,6 +28,10 @@ import {
   type CustomSkillSaveInput,
   type DevStateEvent,
   type HelpEventEnvelope,
+  type MigrationInspectedPage,
+  type MigrationPage,
+  type MigrationSource,
+  type MigrationStateEvent,
   type PreviewBounds,
   type PreviewNavState,
   type PreviewAgentEvent,
@@ -69,6 +74,16 @@ function subscribe<T>(name: string, cb: (payload: T) => void): () => void {
   }
 }
 
+/** A one-off Advisor run's model, as command arguments (blank parts left out). */
+function modelChoiceArgs(choice?: AdvisorModelChoice): AdvisorModelChoice {
+  return {
+    model: choice?.model || undefined,
+    effort: choice?.effort || undefined,
+    autoTier: choice?.autoTier || undefined,
+    contextTier: choice?.contextTier || undefined
+  }
+}
+
 export const api: RayfinStudioApi = {
   ping: () => invoke('ping'),
   getVersions: () => invoke('get_versions'),
@@ -91,6 +106,7 @@ export const api: RayfinStudioApi = {
   },
   openInEditor: (id: string) => invoke('open_in_editor', { id }),
   relaunch: () => invoke('relaunch'),
+  revealWindow: (background?: string) => invoke('window_reveal', { background: background ?? null }),
 
   updates: {
     check: () => invoke('update_check'),
@@ -159,7 +175,36 @@ export const api: RayfinStudioApi = {
     directorySearch: (query: string) => invoke('fabric_directory_search', { query }),
     listWorkspaceModels: (workspaceId: string) =>
       invoke('fabric_list_workspace_models', { workspaceId }),
+    listWorkspaceData: (workspaceId: string) =>
+      invoke('fabric_list_workspace_data', { workspaceId }),
     checkDeployTarget: (workspaceId: string) => invoke('fabric_check_deploy_target', { workspaceId })
+  },
+
+  migration: {
+    workspaces: () => invoke('migration_workspaces'),
+    reports: (workspaceId: string) => invoke('migration_reports', { workspaceId }),
+    search: (query: string) => invoke('migration_search', { query }),
+    inspect: (request: { target?: string; workspaceId?: string; reportId?: string }) =>
+      invoke('migration_inspect', {
+        target: request.target ?? null,
+        workspaceId: request.workspaceId ?? null,
+        reportId: request.reportId ?? null
+      }),
+    start: (projectId: string, source: MigrationSource, pages: MigrationInspectedPage[]) =>
+      invoke('migration_start', { projectId, source, pages }),
+    state: (projectId: string) => invoke('migration_state', { projectId }),
+    resume: (projectId: string) => invoke('migration_resume', { projectId }),
+    pdf: (projectId: string, index: number) => invoke('migration_pdf', { projectId, index }),
+    savePage: (projectId: string, index: number, png: string, text: string, thumb?: string) =>
+      invoke('migration_save_page', { projectId, index, png, text, thumb: thumb ?? null }),
+    finishImages: (projectId: string, error?: string) =>
+      invoke('migration_finish_images', { projectId, error: error ?? null }),
+    setPageStatus: (projectId: string, index: number, status: MigrationPage['status']) =>
+      invoke('migration_set_page_status', { projectId, index, status }),
+    cancel: (projectId: string) => invoke('migration_cancel', { projectId }),
+    dismiss: (projectId: string, dismissed: boolean) => invoke('migration_dismiss', { projectId, dismissed }),
+    onState: (cb: (event: MigrationStateEvent) => void) =>
+      subscribe<MigrationStateEvent>(IpcChannels.migrationState, cb)
   },
 
   projects: {
@@ -242,21 +287,11 @@ export const api: RayfinStudioApi = {
     load: (projectId: string) => invoke('advisor_load', { projectId }),
     saveState: (projectId: string, state: AdvisorUiState) =>
       invoke('advisor_save_state', { projectId, state }),
-    explain: (
-      projectId: string,
-      explainId: string,
-      finding: AdvisorFinding,
-      model?: string,
-      effort?: string
-    ) => invoke('advisor_explain', { projectId, explainId, finding, model, effort }),
+    explain: (projectId: string, explainId: string, finding: AdvisorFinding, choice?: AdvisorModelChoice) =>
+      invoke('advisor_explain', { projectId, explainId, finding, ...modelChoiceArgs(choice) }),
     explainCancel: (projectId: string) => invoke('advisor_explain_cancel', { projectId }),
-    verify: (
-      projectId: string,
-      verifyId: string,
-      findings: AdvisorFinding[],
-      model?: string,
-      effort?: string
-    ) => invoke('advisor_verify', { projectId, verifyId, findings, model, effort }),
+    verify: (projectId: string, verifyId: string, findings: AdvisorFinding[], choice?: AdvisorModelChoice) =>
+      invoke('advisor_verify', { projectId, verifyId, findings, ...modelChoiceArgs(choice) }),
     verifyCancel: (projectId: string) => invoke('advisor_verify_cancel', { projectId }),
     onEvent: (cb: (envelope: AdvisorEventEnvelope) => void) =>
       subscribe<AdvisorEventEnvelope>(IpcChannels.advisorEvent, cb)
@@ -305,6 +340,7 @@ export const api: RayfinStudioApi = {
     setOptions: (projectId: string, options: ChatOptions) =>
       invoke('chat_set_options', { projectId, options }),
     listModels: () => invoke('chat_models'),
+    autoTiers: () => invoke('chat_auto_tiers'),
     suggest: (projectId: string) => invoke('chat_suggest', { projectId }),
     cancelSuggest: (projectId: string) => invoke('chat_suggest_cancel', { projectId })
   },
@@ -324,6 +360,7 @@ export const api: RayfinStudioApi = {
       invoke('deploy_set_name', { projectId, workspaceKey, name }),
     status: (projectId: string) => invoke('deploy_status', { projectId }),
     hasChanges: (projectId: string) => invoke('deploy_has_changes', { projectId }),
+    pending: (projectId: string) => invoke('deploy_pending', { projectId }),
     reconcile: (projectId: string) => invoke('deploy_reconcile', { projectId })
   },
 
@@ -374,9 +411,18 @@ export const api: RayfinStudioApi = {
     set: (patch: Partial<AppSettings>) => invoke('settings_set', { patch })
   },
 
+  byok: {
+    status: () => invoke('byok_status'),
+    setKey: (provider: string, key: string) => invoke('byok_set_key', { provider, key }),
+    refresh: (provider: string) => invoke('byok_refresh', { provider }),
+    removeKey: (provider: string) => invoke('byok_remove_key', { provider }),
+    setModels: (provider: string, models: string[]) => invoke('byok_set_models', { provider, models })
+  },
+
   preview: {
     ...serializePreviewMutations({
       showUrl: (url: string, bounds: PreviewBounds) => invoke('preview_show_url', { url, bounds }),
+      preload: (url: string, bounds: PreviewBounds) => invoke('preview_preload', { url, bounds }),
       navigate: (url: string, bounds: PreviewBounds) => invoke('preview_navigate', { url, bounds }),
       setBounds: (bounds: PreviewBounds) => invoke('preview_set_bounds', { bounds }),
       hide: () => invoke('preview_hide'),

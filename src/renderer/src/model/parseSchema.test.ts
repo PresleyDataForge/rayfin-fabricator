@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LineIndex, maskComments, parseDataModel, readSchemaTypeNames } from './parseSchema'
+import { LineIndex, maskComments, parseDataModel, parseEntityClasses, readSchemaTypeNames } from './parseSchema'
 
 const TODO = [
   "import { entity, authenticated, uuid, text } from '@microsoft/rayfin-core';",
@@ -64,6 +64,62 @@ describe('readSchemaTypeNames', () => {
     const src =
       'export type NoteRecord = { id: string; body: string };\nexport type AppSchema = { Note: Note; Tag: Tag };\nexport const schema = [Note, Tag];\n'
     expect(readSchemaTypeNames(src, ['Note', 'Tag'])).toMatchObject({ typeName: 'AppSchema', names: ['Note', 'Tag'] })
+  })
+})
+
+describe('parseDataModel primary keys', () => {
+  it('marks only the id field, not a declared uuid foreign key', async () => {
+    const files: Record<string, string> = {
+      'rayfin/data/schema.ts':
+        "import { Tag } from './Tag.js';\nimport { TodoTag } from './TodoTag.js';\nexport const schema = [Tag, TodoTag];\n",
+      'rayfin/data/Tag.ts': TODO.replace('class Todo', 'class Tag'),
+      'rayfin/data/TodoTag.ts': [
+        "import { entity, authenticated, uuid, one } from '@microsoft/rayfin-core';",
+        "import { Tag } from './Tag.js';",
+        '@entity()',
+        "@authenticated('*')",
+        'export class TodoTag {',
+        '  @uuid() id!: string;',
+        '  @uuid() tag_id!: string;',
+        '  @one(() => Tag) tag!: Tag;',
+        '}',
+        ''
+      ].join('\n')
+    }
+    const model = await parseDataModel(async (p) => files[p] ?? null)
+    const fields = model.entities.find((e) => e.name === 'TodoTag')!.fields
+    expect(fields.filter((f) => f.primaryKey).map((f) => f.name)).toEqual(['id'])
+    expect(fields.find((f) => f.name === 'tag_id')).toMatchObject({ type: 'uuid', fkTo: 'Tag' })
+  })
+})
+
+describe('parseEntityClasses', () => {
+  it('reads a connector entity whose heritage clause holds braces', () => {
+    const src = [
+      "import { entity, int, one } from '@microsoft/rayfin-core';",
+      "import { Source } from '@microsoft/rayfin-connectors';",
+      "@role('authenticated', ['read'])",
+      '@entity()',
+      'export class Appointments extends Source({',
+      "  schema: 'dbo',",
+      "  table: 'appointments',",
+      "  primaryKey: ['appointmentId'],",
+      '}) {',
+      "  @int({ column: 'appointment_id' })",
+      '  appointmentId!: number;',
+      "  @one(() => Patients, { sourceFields: ['patientId'], targetFields: ['patientId'] })",
+      '  patient!: Patients;',
+      '}',
+      ''
+    ].join('\n')
+    const [cls] = parseEntityClasses(src, 'rayfin/connectors/clinic/Appointments.ts')
+    expect(cls.name).toBe('Appointments')
+    expect(cls.heritage).toContain("table: 'appointments'")
+    expect(cls.fields.map((f) => [f.name, f.type])).toEqual([
+      ['appointmentId', 'int'],
+      ['patient', 'relation']
+    ])
+    expect(cls.permissions).toEqual([{ role: 'authenticated', actions: ['read'], hasPolicy: false, decorator: 'role' }])
   })
 })
 
